@@ -4,8 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   FaHome, FaExclamationTriangle, FaHandHoldingHeart, FaUserFriends,
   FaCampground, FaBox, FaBullhorn, FaChartBar, FaMapMarkedAlt,
-  FaUser, FaSignOutAlt, FaBars, FaTasks, FaTruck, FaTimes,
-  FaBell, FaListAlt, FaMap
+  FaUser, FaSignOutAlt, FaBars, FaTasks, FaTimes, FaBell, FaListAlt
 } from 'react-icons/fa';
 
 const navConfig = {
@@ -38,7 +37,7 @@ const navConfig = {
     { to: '/admin/camps', icon: <FaCampground />, label: 'Relief Camps' },
     { label: 'RESOURCES', divider: true },
     { to: '/admin/resources', icon: <FaBox />, label: 'Inventory' },
-    { to: '/admin/distributions', icon: <FaTruck />, label: 'Distribution' },
+    { to: '/admin/distributions', icon: <FaTasks />, label: 'Distribution' },
     { label: 'COMMUNICATION', divider: true },
     { to: '/admin/announcements', icon: <FaBullhorn />, label: 'Announcements' },
     { label: 'INSIGHTS', divider: true },
@@ -64,9 +63,13 @@ export default function DashboardLayout({ role }) {
 
   return (
     <div className="app-layout">
-      {/* Mobile menu toggle */}
-      <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 200 }}>
-        <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+      {/* Mobile menu toggle — always visible on small screens */}
+      <div className="menu-toggle">
+        <button
+          className="btn btn-outline btn-sm"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+        >
           {sidebarOpen ? <FaTimes /> : <FaBars />}
         </button>
       </div>
@@ -74,7 +77,10 @@ export default function DashboardLayout({ role }) {
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <h2>🚑 ResQLink</h2>
+          <h2>
+            <FaExclamationTriangle />
+            <span className="d-md-none">ResQLink</span>
+          </h2>
           <p>{roleLabels[role]}</p>
         </div>
         <nav className="sidebar-nav">
@@ -92,33 +98,47 @@ export default function DashboardLayout({ role }) {
                 end={item.end}
                 onClick={() => setSidebarOpen(false)}
               >
-                {item.icon}
-                <span>{item.label}</span>
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label-text">{item.label}</span>
               </NavLink>
             )
           )}
-          <div className="nav-divider" />
-          <a onClick={handleLogout} style={{ cursor: 'pointer' }}>
+        </nav>
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <div className="sidebar-avatar">
+              {user?.name?.charAt(0) || 'U'}
+            </div>
+            <div className="sidebar-user-text">
+              <div className="sidebar-user-name">{user?.name || 'User'}</div>
+              <div className="sidebar-user-role">{roleLabels[role]}</div>
+            </div>
+          </div>
+          <button className="btn btn-outline btn-sm w-100" onClick={handleLogout}>
             <FaSignOutAlt />
             <span>Logout</span>
-          </a>
-        </nav>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="main-content">
         <header className="header">
-          <div className="header-left" style={{ paddingLeft: 48 }}>
+          <div className="header-left">
+            <div className="header-brand">
+              <span className="header-title">ResQLink</span>
+              <span className="header-sub">Emergency Response &amp; Relief Coordination</span>
+            </div>
             <div>
-              <strong>Welcome, {user?.name}</strong>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              <strong className="welcome">Welcome, {user?.name}</strong>
+              <div className="user-meta">
                 {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)} • {user?.email}
               </div>
             </div>
           </div>
           <div className="header-right">
-            <span className={`badge badge-${role === 'admin' ? 'danger' : role === 'volunteer' ? 'success' : 'info'}`}>
-              {role === 'admin' ? '🔴 Authority' : role === 'volunteer' ? '🟢 Volunteer' : '🔵 Citizen'}
+            <span className={`badge bg-${role === 'admin' ? 'danger' : role === 'volunteer' ? 'success' : 'info'}`}>
+              {role === 'admin' ? 'Authority' : role === 'volunteer' ? 'Volunteer' : 'Citizen'}
             </span>
           </div>
         </header>
