@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaBell } from 'react-icons/fa';
+import { FaBell, FaCheckCircle, FaClock, FaTimes, FaTasks } from 'react-icons/fa';
 
 export default function MyAssignments() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [assignment, setAssignment] = useState(null);
 
   useEffect(() => {
     fetchAssignments();
@@ -33,73 +34,181 @@ export default function MyAssignments() {
     }
   };
 
-  const filtered = filter === 'all' ? assignments : assignments.filter(a => a.status === filter);
+  const details = assignment?.request;
 
-  if (loading) return <div className="loading"><div className="spinner"></div>Loading assignments...</div>;
+  const filtered =
+    filter === 'all' ? assignments : assignments.filter(a => a.status === filter);
+
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Loading your assignments...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h2 style={{ marginBottom: 20 }}><FaBell /> My Assignments</h2>
+      <div className="page-header">
+        <div>
+          <h1 className="mb-0">My Assignments</h1>
+          <p className="text-muted">Track and update the status of your current tasks</p>
+        </div>
+        <button className="btn btn-outline" onClick={() => setFilter('all')}>
+          <FaBell /> View All
+        </button>
+      </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        {['all', 'Assigned', 'In Progress', 'Completed'].map(f => (
-          <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter(f)}>
-            {f === 'all' ? 'All' : f}
-          </button>
-        ))}
+      <div className="card mb-3">
+        <div className="card-body d-flex align-items-center gap-2 flex-wrap">
+          {['all', 'Assigned', 'In Progress', 'Completed'].map(f => (
+            <button
+              key={f}
+              className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFilter(f)}
+            >
+              {f === 'all' ? 'All' : f}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon">📋</div>
-            <h4>No assignments</h4>
-            <p>Check available tasks to get started</p>
+            <h3>No assignments yet</h3>
+            <p>Check available tasks to get started.</p>
+            <a href="/volunteer/available-tasks" className="btn btn-primary mt-2">
+              <FaTasks /> Find Available Tasks
+            </a>
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {filtered.map(assignment => (
-            <div key={assignment._id} className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div>
-                  <span className={`badge badge-${assignment.status === 'Completed' ? 'success' : assignment.status === 'In Progress' ? 'warning' : 'info'}`}>
-                    {assignment.status}
-                  </span>
-                  <span className={`badge badge-${assignment.priority === 'Critical' ? 'critical' : assignment.priority === 'High' ? 'danger' : 'secondary'}`} style={{ marginLeft: 8 }}>
-                    {assignment.priority}
-                  </span>
+        <div className="card">
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Task</th>
+                  <th>Request Type</th>
+                  <th>Priority</th>
+                  <th>Location</th>
+                  <th>People</th>
+                  <th>Assigned Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(assignment => (
+                  <tr key={assignment._id}>
+                    <td>
+                      <span className={`badge bg-${assignment.status === 'Completed' ? 'success' : assignment.status === 'In Progress' ? 'warning' : assignment.status === 'Assigned' ? 'info' : 'secondary'}`}>
+                        {assignment.status}
+                      </span>
+                    </td>
+                    <td style={{ maxWidth: 220 }}>
+                      <div className="truncate">{assignment.taskDescription}</div>
+                    </td>
+                    <td>
+                      <span className="badge bg-info">{assignment.request?.requestType || 'N/A'}</span>
+                    </td>
+                    <td>
+                      <span className={`badge bg-${assignment.priority === 'Critical' ? 'critical' : assignment.priority === 'High' ? 'danger' : 'warning'}`}>
+                        {assignment.priority}
+                      </span>
+                    </td>
+                    <td className="text-sm">{assignment.request?.location || '—'}</td>
+                    <td className="text-sm">{assignment.request?.peopleCount || '—'}</td>
+                    <td className="text-sm">{new Date(assignment.assignedDate).toLocaleDateString()}</td>
+                    <td>
+                      <div className="d-flex gap-2 flex-wrap">
+                        {assignment.status !== 'Completed' && (
+                          <button
+                            className={`btn btn-sm ${assignment.status === 'Assigned' ? 'btn-warning' : 'btn-success'}`}
+                            onClick={() => {
+                              const next =
+                                assignment.status === 'Assigned' ? 'In Progress' : 'Completed';
+                              updateStatus(assignment._id, next);
+                            }}
+                          >
+                            {assignment.status === 'Assigned' ? '▶ Start' : '✓ Done'}
+                          </button>
+                        )}
+                        <a href="/volunteer/available-tasks" className="btn btn-sm btn-outline">
+                          <FaTimes /> Close
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Assignment Details Modal */}
+      {assignment && (
+        <div className="modal-overlay" onClick={() => setAssignment(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{assignment.request?.requestType || 'Assignment Details'}</h3>
+              <button onClick={() => setAssignment(null)} className="btn btn-sm btn-outline">
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="d-flex align-items-center gap-3 mb-3">
+                <div style={{ fontSize: '1.4rem' }}>
+                  {assignment.status === 'Completed' ? <FaCheckCircle /> : <FaClock />}
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Assigned: {new Date(assignment.assignedDate).toLocaleDateString()}
-                </span>
+                <div>
+                  <strong className="mb-0">{assignment.taskDescription}</strong>
+                  <p className="text-secondary mb-0 small">{assignment.request?.description || ''}</p>
+                </div>
               </div>
 
-              <p style={{ marginBottom: 12 }}>{assignment.taskDescription}</p>
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <span className="badge bg-warning">{assignment.priority}</span>
+                <span className="badge bg-info">{assignment.status}</span>
+                <span className="badge bg-secondary">📍 {assignment.request?.location || '—'}</span>
+                <span className="badge bg-secondary">👥 {assignment.request?.peopleCount || '—'}</span>
+              </div>
 
-              {assignment.request && (
-                <div style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', marginBottom: 12, fontSize: '0.85rem' }}>
-                  <strong>Request Details:</strong><br />
-                  Type: {assignment.request.requestType} | Location: {assignment.request.location} | People: {assignment.request.peopleCount}
+              {details && (
+                <div className="card mb-3">
+                  <div className="card-body">
+                    <h5 className="mb-2 small"><FaBell /> Request Details</h5>
+                    <div className="mb-1 text-secondary"><strong>Type:</strong> {details.requestType}</div>
+                    <div className="mb-1 text-secondary"><strong>Location:</strong> {details.location}</div>
+                    <div className="mb-1 text-secondary"><strong>People:</strong> {details.peopleCount}</div>
+                    <div className="mb-0 text-secondary"><strong>Priority:</strong> {details.priority}</div>
+                  </div>
                 </div>
               )}
 
-              {assignment.status !== 'Completed' && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {assignment.status === 'Assigned' && (
-                    <button className="btn btn-warning btn-sm" onClick={() => updateStatus(assignment._id, 'In Progress')}>
-                      ▶ Start Task
-                    </button>
-                  )}
-                  {assignment.status === 'In Progress' && (
-                    <button className="btn btn-success btn-sm" onClick={() => updateStatus(assignment._id, 'Completed')}>
-                      ✓ Mark Completed
-                    </button>
-                  )}
-                </div>
-              )}
+              <div className="d-flex gap-2">
+                {assignment.status !== 'Completed' && (
+                  <button
+                    className={`btn btn-sm ${assignment.status === 'Assigned' ? 'btn-warning' : 'btn-success'}`}
+                    onClick={() => {
+                      const next =
+                        assignment.status === 'Assigned' ? 'In Progress' : 'Completed';
+                      updateStatus(assignment._id, next);
+                    }}
+                  >
+                    {assignment.status === 'Assigned' ? '▶ Start' : '✓ Mark Done'}
+                  </button>
+                )}
+                <button className="btn btn-outline" onClick={() => setAssignment(null)}>
+                  Close
+                </button>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>
