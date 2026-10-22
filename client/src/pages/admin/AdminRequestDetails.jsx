@@ -1,81 +1,142 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
+import { FaCheckCircle, FaTimes, FaArrowLeft, FaUserMd, FaMapMarkerAlt, FaCalendarAlt, FaUserClock, FaHandHoldingHeart, FaPhone } from 'react-icons/fa';
 
 const STATUSES = ['Pending', 'Verified', 'Assigned', 'In Progress', 'Completed', 'Rejected'];
 
 export default function AdminRequestDetails() {
-  const { id } = useParams();
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notes, setNotes] = useState('');
+  const [volunteers, setVolunteers] = useState([]);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
-    const fetchRequest = async () => {
-      try {
-        const { data } = await api.get(`/api/requests/${id}`);
-        setRequest(data);
-        setNotes(data.notes || '');
-      } catch (err) { console.error(err); }
-      finally { setLoading(false); }
-    };
-    fetchRequest();
-  }, [id]);
+    const id = window.location.pathname.split('/').pop();
+    fetchRequest(id);
+    fetchVolunteers();
+  }, []);
 
-  const updateRequest = async (updates) => {
+  const fetchRequest = async (id) => {
     try {
-      const { data } = await api.put(`/api/requests/${id}`, { ...updates, notes });
-      setRequest(data);
-      toast.success('Updated successfully');
+      const { data } = await api.get(`/api/requests/${id}`);
+      setRequest(data.request);
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed to load'); }
+    finally { setLoading(false); }
+  };
+
+  const fetchVolunteers = async () => {
+    try {
+      const { data } = await api.get('/api/volunteers/available');
+      setVolunteers(data);
+    } catch (err) { console.error(err); }
+  };
+
+  const update = async (status) => {
+    try {
+      await api.put(`/api/requests/${request._id}`, { status });
+      toast.success('Status updated');
+      fetchRequest(request._id);
     } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
   };
 
-  if (loading) return <div className="loading"><div className="spinner"></div>Loading...</div>;
-  if (!request) return <div className="card"><div className="empty-state"><h4>Not found</h4></div></div>;
+  const assign = async (volunteerId) => {
+    if (!volunteerId) return toast.error('Select a volunteer');
+    try {
+      await api.post('/api/assignments', {
+        volunteerId,
+        requestId: request._id,
+        taskDescription: `Handle ${request.requestType} request: ${request.description}`
+      });
+      toast.success('Volunteer assigned');
+      fetchRequest(request._id);
+      setAssigning(false);
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+
+  if (loading || !request) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Loading request details...</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 800 }}>
-      <Link to="/admin/requests" style={{ fontSize: '0.9rem', color: 'var(--primary-light)' }}>← Back to Requests</Link>
-      <h2 style={{ margin: '12px 0' }}>Request Details</h2>
+    <div>
+      <div className="page-header">
+        <div className="d-flex gap-2">
+          <button className="btn btn-outline"><FaArrowLeft /> Back</button>
+        </div>
+        <div>
+          <h1 className="mb-0">Request Details</h1>
+          <p className="text-muted">{request.requestType} — {request.status}</p>
+        </div>
+      </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div>
-            <span className="badge badge-info" style={{ fontSize: '0.9rem' }}>{request.requestType}</span>
-            <span className={`badge badge-${request.priority === 'Critical' ? 'critical' : request.priority === 'Urgent' ? 'warning' : 'secondary'}`} style={{ marginLeft: 8 }}>{request.priority}</span>
+      <div className="row">
+        <div className="col-md-8">
+          <div className="card">
+            <div className="card-body">
+              <h4 className="card-title">{request.title || request.requestType}</h4>
+              <p className="text-muted small mb-3">{request.description}</p>
+
+              <div className="row mb-3">
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaUserMd /><span className="text-muted">Citizen: <strong>{request.citizen?.name || '—'}</strong></span></div></div>
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaMapMarkerAlt /><span className="text-muted">{request.location}</span></div></div>
+              </div>
+
+              <div className="row mb-3">
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaUserClock /><span className="text-muted">Priority: <strong>{request.priority}</strong></span></div></div>
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaCalendarAlt /><span className="text-muted">Time: <strong>{request.createdAt?.substring(0, 16).replace('T', ' ')}</strong></span></div></div>
+              </div>
+
+              <div className="row mb-3">
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaHandHoldingHeart /><span className="text-muted">People affected: <strong>{request.peopleCount || 0}</strong></span></div></div>
+                <div className="col-md-6"><div className="d-flex align-items-center gap-2"><FaPhone /><span className="text-muted">{request.contactNumber || '—'}</span></div></div>
+              </div>
+
+              {request.assignedVolunteer && (
+                <div className="alert alert-info small">
+                  <FaUserMd /> Assigned to <strong>{request.assignedVolunteer?.name}</strong>
+                </div>
+              )}
+
+              <div className="d-flex gap-2 flex-wrap">
+                {STATUSES.map(s => {
+                  const active = s === request.status;
+                  return (
+                    <button
+                      key={s}
+                      className={`btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}`}
+                      disabled={active}
+                      onClick={() => update(s)}
+                    >
+                      <FaCheckCircle /> {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <span className={`badge badge-${request.status === 'Completed' ? 'success' : request.status === 'Rejected' ? 'danger' : 'info'}`} style={{ fontSize: '0.9rem' }}>{request.status}</span>
         </div>
 
-        <div className="detail-field"><div className="field-label">Description</div><div className="field-value">{request.description}</div></div>
-        <div className="detail-field"><div className="field-label">Location</div><div className="field-value">{request.location}</div></div>
-        <div className="detail-field"><div className="field-label">People</div><div className="field-value">{request.peopleCount}</div></div>
-        <div className="detail-field"><div className="field-label">Contact</div><div className="field-value">{request.contactNumber}</div></div>
-        <div className="detail-field"><div className="field-label">Citizen</div><div className="field-value">{request.citizen?.name} ({request.citizen?.email})</div></div>
-        <div className="detail-field"><div className="field-label">Volunteer</div><div className="field-value">{request.assignedVolunteer?.name || 'Not assigned'}</div></div>
-        <div className="detail-field"><div className="field-label">Created</div><div className="field-value">{new Date(request.createdAt).toLocaleString()}</div></div>
-      </div>
-
-      {/* Actions */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h4 style={{ marginBottom: 16 }}>Update Status</h4>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {STATUSES.map(s => (
-            <button key={s} className={`btn btn-sm ${request.status === s ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => updateRequest({ status: s })} disabled={request.status === s}>
-              {s}
-            </button>
-          ))}
+        <div className="col-md-4">
+          <div className="card">
+            <div className="card-body">
+              <h5 className="card-title">Assign Volunteer</h5>
+              <p className="card-text text-muted small">Volunteers available below.</p>
+              <select className="form-control" onChange={e => setAssigning(e.target.value)}>
+                <option value="">-- Select --</option>
+                {volunteers.map(v => (
+                  <option key={v._id} value={v.user?._id || v.user}>{v.user?.name} — {v.skills?.join(', ')}</option>
+                ))}
+              </select>
+              <button className="btn btn-success mt-2" disabled={!assigning} onClick={() => assign(assigning)}>Assign</button>
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Notes */}
-      <div className="card">
-        <h4 style={{ marginBottom: 12 }}>Admin Notes</h4>
-        <textarea className="form-control" value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="Add notes about this request..." rows={4} />
-        <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => updateRequest({})}>Save Notes</button>
       </div>
     </div>
   );

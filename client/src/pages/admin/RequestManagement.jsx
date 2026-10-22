@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaHandHoldingHeart } from 'react-icons/fa';
+import { FaHandHoldingHeart, FaCheckCircle, FaTimes, FaArrowLeft } from 'react-icons/fa';
 
 const STATUSES = ['Pending', 'Verified', 'Assigned', 'In Progress', 'Completed', 'Rejected'];
 const REQUEST_TYPES = ['Rescue', 'Food', 'Drinking Water', 'Medicine', 'Medical Assistance', 'Shelter', 'Clothing', 'Transportation', 'Electricity', 'Other'];
@@ -53,6 +52,7 @@ export default function RequestManagement() {
 
   const handleAssign = async () => {
     if (!selectedVolunteer) return toast.error('Select a volunteer');
+    if (!assignModal) return;
     try {
       await api.post('/api/assignments', {
         volunteerId: selectedVolunteer,
@@ -67,30 +67,63 @@ export default function RequestManagement() {
     } catch (err) { toast.error(err.response?.data?.message || 'Assignment failed'); }
   };
 
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Loading requests...</p>
+      </div>
+    );
+  }
+
+  const filtered = filters.requestType || filters.priority || filters.status || filters.search
+    ? requests
+    : [];
+
   return (
     <div>
-      <h2 style={{ marginBottom: 20 }}><FaHandHoldingHeart /> Citizen Requests</h2>
-
-      <div className="filter-bar">
-        <input type="text" placeholder="Search requests..." value={filters.search} onChange={e => { setFilters({ ...filters, search: e.target.value }); setPagination(p => ({ ...p, page: 1 })); }} />
-        <select className="form-control" value={filters.requestType} onChange={e => { setFilters({ ...filters, requestType: e.target.value }); setPagination(p => ({ ...p, page: 1 })); }}>
-          <option value="">All Types</option>
-          {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select className="form-control" value={filters.priority} onChange={e => { setFilters({ ...filters, priority: e.target.value }); setPagination(p => ({ ...p, page: 1 })); }}>
-          <option value="">All Priorities</option>
-          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select className="form-control" value={filters.status} onChange={e => { setFilters({ ...filters, status: e.target.value }); setPagination(p => ({ ...p, page: 1 })); }}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+      <div className="page-header">
+        <div>
+          <h1 className="mb-0">Citizen Requests</h1>
+          <p className="text-muted">Review and manage assistance requests from citizens</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setAssignModal(null)}>
+          <FaHandHoldingHeart /> New Request
+        </button>
       </div>
 
-      {loading ? (
-        <div className="loading"><div className="spinner"></div>Loading...</div>
-      ) : requests.length === 0 ? (
-        <div className="card"><div className="empty-state"><div className="empty-icon">📋</div><h4>No requests found</h4></div></div>
+      <div className="card mb-3">
+        <div className="card-body d-flex align-items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Search requests..."
+            value={filters.search}
+            onChange={e => setFilters({ ...filters, search: e.target.value, page: 1 })}
+          />
+          <select className="form-control" value={filters.requestType} onChange={e => setFilters({ ...filters, requestType: e.target.value, page: 1 })}>
+            <option value="">All Types</option>
+            {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className="form-control" value={filters.priority} onChange={e => setFilters({ ...filters, priority: e.target.value, page: 1 })}>
+            <option value="">All Priorities</option>
+            {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select className="form-control" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value, page: 1 })}>
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-icon">📋</div>
+            <h3>No requests found</h3>
+            <p>Use the filters to narrow down your search.</p>
+          </div>
+        </div>
       ) : (
         <div className="card">
           <div className="table-container">
@@ -108,27 +141,42 @@ export default function RequestManagement() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map(req => (
+                {filtered.map(req => (
                   <tr key={req._id}>
-                    <td><span className="badge badge-info">{req.requestType}</span></td>
-                    <td>{req.peopleCount}</td>
-                    <td><span className={`badge badge-${req.priority === 'Critical' ? 'critical' : req.priority === 'Urgent' ? 'warning' : 'secondary'}`}>{req.priority}</span></td>
-                    <td style={{ fontSize: '0.85rem', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.location}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{req.citizen?.name || '—'}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{req.assignedVolunteer?.name || '—'}</td>
-                    <td><span className={`badge badge-${req.status === 'Completed' ? 'success' : req.status === 'Rejected' ? 'danger' : req.status === 'In Progress' ? 'warning' : 'info'}`}>{req.status}</span></td>
+                    <td><span className="badge bg-info">{req.requestType}</span></td>
+                    <td className="text-sm">{req.peopleCount}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <span className={`badge bg-${req.priority === 'Critical' ? 'critical' : req.priority === 'Urgent' ? 'warning' : 'secondary'}`}>
+                        {req.priority}
+                      </span>
+                    </td>
+                    <td className="text-sm">{req.location}</td>
+                    <td className="text-sm">{req.citizen?.name || '—'}</td>
+                    <td className="text-sm">{req.assignedVolunteer?.name || '—'}</td>
+                    <td>
+                      <span className={`badge bg-${req.status === 'Completed' ? 'success' : req.status === 'Rejected' ? 'danger' : req.status === 'In Progress' ? 'warning' : req.status === 'Assigned' ? 'info' : req.status === 'Verified' ? 'primary' : 'secondary'}`}>
+                        {req.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="d-flex gap-2 flex-wrap">
                         {req.status !== 'Completed' && req.status !== 'Rejected' && (
-                          <select className="form-control" style={{ width: 110, padding: '3px 6px', fontSize: '0.75rem' }}
-                            value={req.status} onChange={e => updateStatus(req._id, e.target.value)}>
-                            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                          <>
+                            <select
+                              className="form-control form-control-sm"
+                              value={req.status}
+                              onChange={e => updateStatus(req._id, e.target.value)}
+                            >
+                              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            {req.status === 'Pending' && (
+                              <button className="btn btn-sm btn-success" onClick={() => setAssignModal(req)}>
+                                Assign
+                              </button>
+                            )}
+                          </>
                         )}
-                        {(req.status === 'Pending' || req.status === 'Verified') && !req.assignedVolunteer && (
-                          <button className="btn btn-sm btn-primary" onClick={() => setAssignModal(req)}>Assign</button>
-                        )}
-                        <Link to={`/admin/requests/${req._id}`} className="btn btn-sm btn-outline">View</Link>
+                        <a href={`/admin/requests/${req._id}`} className="btn btn-sm btn-outline"><FaTimes /> Close</a>
                       </div>
                     </td>
                   </tr>
@@ -138,10 +186,34 @@ export default function RequestManagement() {
           </div>
 
           {pagination.pages > 1 && (
-            <div className="pagination">
-              <button disabled={pagination.page <= 1} onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}>← Prev</button>
-              <span>Page {pagination.page} of {pagination.pages}</span>
-              <button disabled={pagination.page >= pagination.pages} onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}>Next →</button>
+            <div className="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+              <nav>
+                <ul className="pagination">
+                  <li>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      disabled={pagination.page <= 1}
+                      onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}
+                    >
+                      ← Prev
+                    </button>
+                  </li>
+                  <li>
+                    <button className="btn btn-sm btn-outline">
+                      Page {pagination.page} of {pagination.pages} ({pagination.total} total)
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      disabled={pagination.page >= pagination.pages}
+                      onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}
+                    >
+                      Next →
+                    </button>
+                  </li>
+                </ul>
+              </nav>
             </div>
           )}
         </div>
@@ -150,24 +222,37 @@ export default function RequestManagement() {
       {/* Assign Volunteer Modal */}
       {assignModal && (
         <div className="modal-overlay" onClick={() => setAssignModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Assign Volunteer</h3>
-              <button onClick={() => setAssignModal(null)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+              <h3>Assign Volunteer to Request</h3>
+              <button onClick={() => setAssignModal(null)} className="btn btn-sm btn-outline"><FaTimes /></button>
             </div>
             <div className="modal-body">
-              <p style={{ marginBottom: 12 }}>
-                <strong>Request:</strong> {assignModal.requestType} — {assignModal.description}
-              </p>
-              <p style={{ marginBottom: 16 }}><strong>People:</strong> {assignModal.peopleCount} | <strong>Priority:</strong> {assignModal.priority}</p>
+              <div className="d-flex align-items-center gap-3 mb-3">
+                <div style={{ fontSize: '1.4rem' }}><FaHandHoldingHeart /></div>
+                <div>
+                  <strong className="mb-0">{assignModal.requestType}</strong>
+                  <p className="text-secondary mb-0 small">{assignModal.description}</p>
+                </div>
+              </div>
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <span className={`badge bg-${assignModal.priority === 'Critical' ? 'critical' : assignModal.priority === 'Urgent' ? 'warning' : 'secondary'}`}>{assignModal.priority}</span>
+                <span className="badge bg-info">{assignModal.status}</span>
+                <span className="badge bg-secondary">📍 {assignModal.location}</span>
+                <span className="badge bg-secondary">👥 {assignModal.peopleCount} people</span>
+              </div>
 
               <div className="form-group">
                 <label>Select Available Volunteer</label>
-                <select className="form-control" value={selectedVolunteer} onChange={e => setSelectedVolunteer(e.target.value)}>
+                <select
+                  className="form-control"
+                  value={selectedVolunteer}
+                  onChange={e => setSelectedVolunteer(e.target.value)}
+                >
                   <option value="">-- Select Volunteer --</option>
                   {volunteers.map(v => (
                     <option key={v._id} value={v.user?._id || v.user}>
-                      {v.user?.name || 'Volunteer'} — {v.skills?.join(', ')} — {v.location}
+                      {v.user?.name || 'Volunteer'} — {v.skills?.join(', ') || 'No skills'} — {v.location}
                     </option>
                   ))}
                 </select>
@@ -175,7 +260,7 @@ export default function RequestManagement() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-outline" onClick={() => setAssignModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAssign}>Assign Volunteer</button>
+              <button className="btn btn-success" onClick={handleAssign}>Assign Volunteer</button>
             </div>
           </div>
         </div>

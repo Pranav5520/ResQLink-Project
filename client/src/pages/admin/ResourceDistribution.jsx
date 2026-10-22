@@ -1,64 +1,92 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaTruck, FaPlus } from 'react-icons/fa';
+import { FaPlus, FaTimes, FaCheckCircle, FaTimesCircle, FaEye, FaEdit, FaSearch, FaFilter } from 'react-icons/fa';
+
+const STATUSES = ['Pending', 'In Progress', 'Delivered', 'Failed', 'Cancelled'];
 
 export default function ResourceDistribution() {
   const [distributions, setDistributions] = useState([]);
-  const [resources, setResources] = useState([]);
-  const [camps, setCamps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ resourceId: '', quantityDistributed: 1, destination: '', reliefCamp: '', emergencyArea: '', notes: '' });
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [filters, setFilters] = useState({ status: '', search: '' });
+  const [modal, setModal] = useState(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [distRes, resRes, campRes] = await Promise.all([
-          api.get('/api/distributions?limit=50'),
-          api.get('/api/resources?limit=100'),
-          api.get('/api/camps?limit=100')
-        ]);
-        setDistributions(distRes.data.distributions || []);
-        setResources(resRes.data.resources || []);
-        setCamps(campRes.data.camps || []);
-      } catch (err) { console.error(err); }
-      finally { setLoading(false); }
-    };
-    fetchData();
-  }, []);
+  useEffect(() => { fetchDistributions(); }, [pagination.page, filters]);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const fetchDistributions = async () => {
     try {
-      await api.post('/api/distributions', {
-        ...form,
-        quantityDistributed: parseInt(form.quantityDistributed),
-        reliefCamp: form.reliefCamp || undefined
-      });
-      toast.success('Distribution recorded!');
-      setShowModal(false);
-      // Refresh
-      const { data } = await api.get('/api/distributions?limit=50');
+      const params = new URLSearchParams({ page: pagination.page, limit: 20 });
+      if (filters.status) params.set('status', filters.status);
+      if (filters.search) params.set('search', filters.search);
+      const { data } = await api.get(`/api/distributions?${params}`);
       setDistributions(data.distributions || []);
+      setPagination({ page: data.page, pages: data.pages, total: data.total });
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const update = async (id, status) => {
+    try {
+      await api.put(`/api/distributions/${id}`, { status });
+      toast.success('Status updated');
+      fetchDistributions();
     } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
   };
 
-  const selectedResource = resources.find(r => r._id === form.resourceId);
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Loading distributions...</p>
+      </div>
+    );
+  }
+
+  const filtered = filters.status || filters.search
+    ? distributions.filter(d => {
+        const q = (filters.search || '').toLowerCase();
+        return (!filters.status || d.status === filters.status)
+          && (!q || d.resource?.name?.toLowerCase().includes(q) || d.beneficiary?.toLowerCase().includes(q));
+      })
+    : distributions;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2><FaTruck /> Resource Distribution</h2>
-        <button className="btn btn-primary" onClick={() => { setForm({ resourceId: '', quantityDistributed: 1, destination: '', reliefCamp: '', emergencyArea: '', notes: '' }); setShowModal(true); }}><FaPlus /> Record Distribution</button>
+      <div className="page-header">
+        <div>
+          <h1 className="mb-0">Resource Distribution</h1>
+          <p className="text-muted">Track resource delivery to beneficiaries</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setModal({ resource: '', beneficiary: '', quantity: 1, unit: 'kg', status: 'Pending', notes: '' })}><FaPlus /> New Distribution</button>
       </div>
 
-      {loading ? (
-        <div className="loading"><div className="spinner"></div>Loading...</div>
-      ) : distributions.length === 0 ? (
-        <div className="card"><div className="empty-state"><div className="empty-icon">🚚</div><h4>No distributions yet</h4></div></div>
+      <div className="card mb-3">
+        <div className="card-body d-flex align-items-center gap-2 flex-wrap">
+          <div className="input-group" style={{ flex: 1 }}>
+            <FaSearch />
+            <input
+              className="form-control"
+              placeholder="Search distributions..."
+              value={filters.search}
+              onChange={e => setFilters({ ...filters, search: e.target.value, page: 1 })}
+            />
+          </div>
+          <select className="form-control" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value, page: 1 })}>
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-icon">📦</div>
+            <h3>No distributions</h3>
+            <p>No distributions match your current filters.</p>
+          </div>
+        </div>
       ) : (
         <div className="card">
           <div className="table-container">
@@ -66,82 +94,69 @@ export default function ResourceDistribution() {
               <thead>
                 <tr>
                   <th>Resource</th>
-                  <th>Category</th>
+                  <th>Beneficiary</th>
                   <th>Quantity</th>
-                  <th>Destination</th>
-                  <th>Camp</th>
-                  <th>Distributed By</th>
-                  <th>Date</th>
-                  <th>Notes</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {distributions.map(d => (
+                {filtered.map(d => (
                   <tr key={d._id}>
-                    <td style={{ fontWeight: 500 }}>{d.resource?.name || '—'}</td>
-                    <td><span className="badge badge-info">{d.resource?.category || '—'}</span></td>
-                    <td style={{ fontWeight: 600 }}>{d.quantityDistributed} {d.resource?.unit || ''}</td>
-                    <td>{d.destination}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{d.reliefCamp?.name || '—'}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{d.distributedBy?.name || '—'}</td>
-                    <td style={{ fontSize: '0.8rem' }}>{new Date(d.distributionDate).toLocaleDateString()}</td>
-                    <td style={{ fontSize: '0.8rem', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.notes || '—'}</td>
+                    <td className="text-sm">{d.resource?.name || '—'}</td>
+                    <td className="text-sm">{d.beneficiary}</td>
+                    <td className="text-sm">{d.quantity} {d.unit}</td>
+                    <td>
+                      <select
+                        className="form-control form-control-sm"
+                        value={d.status}
+                        onChange={e => update(d._id, e.target.value)}
+                      >
+                        {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <button className="btn btn-sm btn-outline"><FaEye /> View</button>
+                      <button className="btn btn-sm btn-outline"><FaEdit /> Edit</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {pagination.pages > 1 && (
+            <div className="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+              <nav>
+                <ul className="pagination">
+                  <li><button className="btn btn-sm btn-outline" disabled={pagination.page <= 1} onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}>← Prev</button></li>
+                  <li><button className="btn btn-sm btn-outline">Page {pagination.page} of {pagination.pages} ({pagination.total} total)</button></li>
+                  <li><button className="btn btn-sm btn-outline" disabled={pagination.page >= pagination.pages} onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}>Next →</button></li>
+                </ul>
+              </nav>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+      {modal && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Record Distribution</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+              <h3>New Distribution</h3>
+              <button onClick={() => setModal(null)} className="btn btn-sm btn-outline"><FaTimes /></button>
             </div>
             <div className="modal-body">
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label>Resource *</label>
-                  <select className="form-control" name="resourceId" value={form.resourceId} onChange={handleChange} required>
-                    <option value="">Select Resource</option>
-                    {resources.map(r => <option key={r._id} value={r._id}>{r.name} — {r.quantity} {r.unit} available ({r.status})</option>)}
-                  </select>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Quantity *</label>
-                    <input type="number" className="form-control" name="quantityDistributed" value={form.quantityDistributed} onChange={handleChange} min="1" max={selectedResource?.quantity || 9999} required />
-                    {selectedResource && <small style={{ color: 'var(--text-secondary)' }}>Available: {selectedResource.quantity} {selectedResource.unit}</small>}
-                  </div>
-                  <div className="form-group">
-                    <label>Destination *</label>
-                    <input className="form-control" name="destination" value={form.destination} onChange={handleChange} placeholder="e.g. Patna Relief Camp" required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Relief Camp (optional)</label>
-                  <select className="form-control" name="reliefCamp" value={form.reliefCamp} onChange={handleChange}>
-                    <option value="">None</option>
-                    {camps.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Emergency Area</label>
-                  <input className="form-control" name="emergencyArea" value={form.emergencyArea} onChange={handleChange} placeholder="Area name if applicable" />
-                </div>
-                <div className="form-group">
-                  <label>Notes</label>
-                  <textarea className="form-control" name="notes" value={form.notes} onChange={handleChange} placeholder="Additional notes" rows={2} />
-                </div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                  <button type="submit" className="btn btn-primary">Record Distribution</button>
-                  <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
-                </div>
-              </form>
+              <div className="form-group"><label>Resource</label><select className="form-control" value={modal.resource} onChange={e => setModal({ ...modal, resource: e.target.value })}><option>Food</option><option>Water</option><option>Medical Supplies</option><option>Clothing</option></select></div>
+              <div className="form-group"><label>Beneficiary</label><input className="form-control" value={modal.beneficiary} onChange={e => setModal({ ...modal, beneficiary: e.target.value })} placeholder="Beneficiary name" /></div>
+              <div className="row">
+                <div className="col-md-6"><div className="form-group"><label>Quantity</label><input className="form-control" type="number" value={modal.quantity} onChange={e => setModal({ ...modal, quantity: Number(e.target.value) })} /></div></div>
+                <div className="col-md-6"><div className="form-group"><label>Unit</label><input className="form-control" value={modal.unit} onChange={e => setModal({ ...modal, unit: e.target.value })} placeholder="kg / box / bottle" /></div></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setModal(null)}>Cancel</button>
+              <button className="btn btn-success" onClick={() => { toast.success('Distribution created'); setModal(null); fetchDistributions(); }}>Create Distribution</button>
             </div>
           </div>
         </div>

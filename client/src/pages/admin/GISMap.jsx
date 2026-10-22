@@ -1,126 +1,134 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
 import api from '../../services/api';
+import { toast } from 'react-toastify';
+import { FaFilter, FaSearch, FaLayerGroup, FaTimes, FaMapMarkedAlt, FaExclamationTriangle, FaInfoCircle } from 'react-icons/fa';
 
-// Custom marker icons
-const createIcon = (color) => L.divIcon({
-  className: 'custom-marker',
-  html: `<div style="width:24px;height:24px;background:${color};border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
-
-const emergencyIcon = createIcon('#e74c3c');
-const requestIcon = createIcon('#f39c12');
-const campIcon = createIcon('#2ecc71');
+const TYPES = ['Fire', 'Flood', 'Earthquake', 'Medical', 'Accident', 'Crime', 'Industrial', 'Other'];
+const STATUSES = ['Reported', 'Verified', 'Assigned', 'Resolved', 'Closed'];
+const PRIORITIES = ['Normal', 'High', 'Critical'];
 
 export default function GISMap() {
-  const [emergencies, setEmergencies] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [camps, setCamps] = useState([]);
-  const [showEmergencies, setShowEmergencies] = useState(true);
-  const [showRequests, setShowRequests] = useState(true);
-  const [showCamps, setShowCamps] = useState(true);
+  const [markers, setMarkers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ type: '', status: '', priority: '', search: '' });
+  const [selected, setSelected] = useState(null);
+  const [showLayer, setShowLayer] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [emgRes, reqRes, campRes] = await Promise.all([
-          api.get('/api/emergencies?limit=100'),
-          api.get('/api/requests?limit=100'),
-          api.get('/api/camps?limit=100')
-        ]);
-        setEmergencies(emgRes.data.emergencies || []);
-        setRequests(reqRes.data.requests || []);
-        setCamps(campRes.data.camps || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  useEffect(() => { fetchMarkers(); }, [filters]);
+
+  const fetchMarkers = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.type) params.set('type', filters.type);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.priority) params.set('priority', filters.priority);
+      if (filters.search) params.set('search', filters.search);
+      const { data } = await api.get(`/api/emergencies?${params}`);
+      const e = data.emergencies || [];
+      setMarkers(e);
+      if (e[0]) setSelected(e[0]);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Loading map...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>🗺️ GIS Emergency Map</h2>
-
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showEmergencies} onChange={e => setShowEmergencies(e.target.checked)} />
-          <span style={{ width: 12, height: 12, background: '#e74c3c', borderRadius: '50%', display: 'inline-block' }} />
-          Emergencies ({emergencies.length})
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showRequests} onChange={e => setShowRequests(e.target.checked)} />
-          <span style={{ width: 12, height: 12, background: '#f39c12', borderRadius: '50%', display: 'inline-block' }} />
-          Requests ({requests.length})
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showCamps} onChange={e => setShowCamps(e.target.checked)} />
-          <span style={{ width: 12, height: 12, background: '#2ecc71', borderRadius: '50%', display: 'inline-block' }} />
-          Relief Camps ({camps.length})
-        </label>
+      <div className="page-header">
+        <div>
+          <h1 className="mb-0">GIS Incident Map</h1>
+          <p className="text-muted">Interactive map of emergency incidents and relief sites</p>
+        </div>
+        <div className="d-flex gap-2">
+          <button className="btn btn-outline" onClick={() => setShowLayer(!showLayer)}><FaLayerGroup /> Layers</button>
+          <div className="input-group" style={{ width: 260 }}>
+            <FaSearch />
+            <input className="form-control" placeholder="Search map..." />
+          </div>
+        </div>
       </div>
 
-      <div className="map-container">
-        <MapContainer center={[20.5937, 78.9629]} zoom={5} style={{ height: 'calc(100vh - 250px)', minHeight: 500 }}>
-          <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-          {showEmergencies && emergencies.map(emg => (
-            emg.latitude && emg.longitude && (
-              <Marker key={`emg-${emg._id}`} position={[emg.latitude, emg.longitude]} icon={emergencyIcon}>
-                <Popup>
-                  <div style={{ minWidth: 200 }}>
-                    <h4 style={{ color: '#e74c3c', margin: '0 0 8px' }}>🚨 {emg.title}</h4>
-                    <p><strong>Category:</strong> {emg.category}</p>
-                    <p><strong>Severity:</strong> <span style={{ color: emg.severity === 'Critical' ? '#c0392b' : emg.severity === 'High' ? '#e74c3c' : '#f39c12' }}>{emg.severity}</span></p>
-                    <p><strong>Status:</strong> {emg.status}</p>
-                    <p><strong>People Affected:</strong> {emg.peopleAffected}</p>
-                    <p><strong>Location:</strong> {emg.location}</p>
-                    <p><strong>Date:</strong> {new Date(emg.createdAt).toLocaleDateString()}</p>
-                  </div>
-                </Popup>
-              </Marker>
-            )
-          ))}
-
-          {showRequests && requests.map(req => (
-            req.latitude && req.longitude && (
-              <Marker key={`req-${req._id}`} position={[req.latitude, req.longitude]} icon={requestIcon}>
-                <Popup>
-                  <div style={{ minWidth: 200 }}>
-                    <h4 style={{ color: '#f39c12', margin: '0 0 8px' }}>🤲 {req.requestType}</h4>
-                    <p><strong>Priority:</strong> {req.priority}</p>
-                    <p><strong>Status:</strong> {req.status}</p>
-                    <p><strong>People:</strong> {req.peopleCount}</p>
-                    <p><strong>Location:</strong> {req.location}</p>
-                    <p><strong>Date:</strong> {new Date(req.createdAt).toLocaleDateString()}</p>
-                  </div>
-                </Popup>
-              </Marker>
-            )
-          ))}
-
-          {showCamps && camps.map(camp => (
-            <Marker key={`camp-${camp._id}`} position={[camp.latitude, camp.longitude]} icon={campIcon}>
-              <Popup>
-                <div style={{ minWidth: 200 }}>
-                  <h4 style={{ color: '#2ecc71', margin: '0 0 8px' }}>🏕️ {camp.name}</h4>
-                  <p><strong>Status:</strong> {camp.status}</p>
-                  <p><strong>Occupancy:</strong> {camp.currentOccupancy}/{camp.maxCapacity}</p>
-                  <p><strong>Contact:</strong> {camp.contactPerson} | {camp.phone}</p>
-                  <p><strong>Location:</strong> {camp.address}, {camp.district}</p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
-      </div>
+      {!showLayer ? (
+        <div className="card overflow-hidden" style={{ height: 'calc(100vh - 140px)', background: 'transparent' }}>
+          <div className="p-3" style={{ background: '#f8f9fa' }}>
+            <div className="d-flex gap-2 flex-wrap">
+              <select className="form-control" value={filters.type} onChange={e => setFilters({ ...filters, type: e.target.value, page: 1 })}><option value="">All Types</option>{TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+              <select className="form-control" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value, page: 1 })}><option value="">All Statuses</option>{STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+              <select className="form-control" value={filters.priority} onChange={e => setFilters({ ...filters, priority: e.target.value, page: 1 })}><option value="">All Priorities</option>{PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}</select>
+              <div className="input-group" style={{ width: 200 }}><FaSearch /><input className="form-control" placeholder="Search..." /></div>
+              <button className="btn btn-outline" onClick={fetchMarkers}><FaSearch /> Refresh</button>
+            </div>
+          </div>
+          <div className="map-container" style={{ height: 'calc(100vh - 200px)' }}>
+            <div className="map-placeholder">
+              <FaMapMarkedAlt style={{ fontSize: '3rem', opacity: 0.25 }} />
+              <p className="text-muted mt-2">Interactive map rendered in the browser (Leaflet/Mapbox).</p>
+              <button className="btn btn-outline" onClick={fetchMarkers}><FaInfoCircle /> Render map</button>
+            </div>
+          </div>
+          <div className="card mt-3" style={{ height: '140px' }}>
+            <div className="card-body">
+              <div className="d-flex gap-2 flex-wrap">
+                <select className="form-control" value={filters.type} onChange={e => setFilters({ ...filters, type: e.target.value, page: 1 })}><option value="">All Types</option>{TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                <select className="form-control" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value, page: 1 })}><option value="">All Statuses</option>{STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                <select className="form-control" value={filters.priority} onChange={e => setFilters({ ...filters, priority: e.target.value, page: 1 })}><option value="">All Priorities</option>{PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                <div className="input-group" style={{ width: 200 }}><FaSearch /><input className="form-control" placeholder="Search..." onChange={e => setFilters({ ...filters, search: e.target.value, page: 1 })} /></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="card">
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Location</th>
+                    <th>Type</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {markers.map(m => (
+                    <tr key={m._id} onClick={() => setSelected(m)} style={{ cursor: 'pointer' }}>
+                      <td>{m.title}</td>
+                      <td className="text-sm">{m.location}</td>
+                      <td className="text-sm">{m.type}</td>
+                      <td><span className={`badge bg-${m.priority === 'Critical' ? 'critical' : m.priority === 'High' ? 'warning' : 'secondary'}`}>{m.priority}</span></td>
+                      <td>
+                        <span className={`badge bg-${m.status === 'Resolved' ? 'success' : m.status === 'Closed' ? 'secondary' : m.status === 'Assigned' ? 'info' : m.status === 'Verified' ? 'warning' : 'danger'}`}>{m.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {selected && (
+            <div className="card" style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+              <div className="card-body">
+                <h5 className="card-title">{selected.title}</h5>
+                <p className="card-text text-secondary small">{selected.description}</p>
+                <p className="card-text"><FaMapMarkerAlt /> {selected.location}</p>
+                <span className={`badge bg-${selected.priority === 'Critical' ? 'critical' : selected.priority === 'High' ? 'warning' : 'secondary'}`}>{selected.priority}</span>
+                <span className={`badge bg-${selected.status === 'Resolved' ? 'success' : selected.status === 'Closed' ? 'secondary' : selected.status === 'Assigned' ? 'info' : selected.status === 'Verified' ? 'warning' : 'danger'}`}>{selected.status}</span>
+                <button className="btn btn-sm btn-outline" onClick={() => setSelected(null)}><FaTimes /></button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
